@@ -2,16 +2,17 @@
   "name": "whatsapp-bot",
   "version": "1.0.0",
   "description": "WhatsApp bot con Baileys",
-  "main": "index.js",
+  "main": "node.js-connection/index.cjs",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node node.js-connection/index.cjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.8",
-    "@hapi/boom": "^10.0.1"
+    "@hapi/boom": "^10.0.1",
+    "axios": "^1.4.0"
   }
 }
