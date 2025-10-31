@@ -46,7 +46,8 @@ async function startBot() {
 
     console.log("📩 Mensaje recibido:", text)
 
-    // 👉 Invocar tu script Python
+    // 👉 Invocar tu script Python con logging adicional
+    console.log(">>> Intentando invocar Python con argumento:", text)
     const python = spawn("python", ["main.py", text])
 
     python.stdout.on("data", async (data) => {
@@ -64,6 +65,10 @@ async function startBot() {
 
     python.stderr.on("data", (data) => {
       console.error("🐍 Error en Python:", data.toString())
+    })
+
+    python.on("close", (code) => {
+      console.log(">>> Proceso Python terminó con código", code)
     })
   })
 }
