@@ -1,5 +1,5 @@
 // index.js
-import makeWASocket, { useMultiFileAuthState } from "@whiskeysockets/baileys"
+import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys"
 import { Boom } from "@hapi/boom"
 import { spawn } from "child_process"
 
