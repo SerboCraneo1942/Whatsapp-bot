@@ -1,4 +1,6 @@
-// index.js
+import crypto from "crypto"
+global.crypto = crypto
+
 import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys"
 import { Boom } from "@hapi/boom"
 import { spawn } from "child_process"
