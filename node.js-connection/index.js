@@ -1,86 +1,113 @@
-import crypto from "crypto"
+// index.js corregido - CommonJS, no modifica Python, usa PYTHON_URL (no localhost), valida y registra logs mínimos.
+const crypto = require("crypto")
 global.crypto = crypto
 
-import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys"
-import { Boom } from "@hapi/boom"
-import { spawn } from "child_process"
-import http from "http"
+const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys")
+const { Boom } = require("@hapi/boom")
+const axios = require("axios")
+const http = require("http")
+
+// CONFIG: no usar localhost. Ajustar en Render la variable PYTHON_URL al host real del servicio Python.
+const PYTHON_URL = process.env.PYTHON_URL || "http://python-core:10000"
+const PYTHON_PING = `${PYTHON_URL.replace(/\/$/, "")}/ping`
+const PYTHON_HANDLE = `${PYTHON_URL.replace(/\/$/, "")}/handle`
+const PORT = process.env.PORT || 10000
+
+async function callPython(text) {
+  try {
+    const res = await axios.post(PYTHON_HANDLE, { text }, { timeout: 8000 })
+    return res.data
+  } catch (err) {
+    return { __error: err.message || "Error llamando a Python" }
+  }
+}
 
 async function startBot() {
-  // Guardar sesión en carpeta "auth"
   const { state, saveCreds } = await useMultiFileAuthState("auth")
 
   const sock = makeWASocket({
-    auth: state
+    auth: state,
+    printQRInTerminal: false
   })
 
-  // Guardar credenciales cada vez que cambien
   sock.ev.on("creds.update", saveCreds)
 
-  // Manejo de conexión y QR
   sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect, qr } = update
+    const { connection, lastDisconnect, qr } = update || {}
 
     if (qr) {
-      console.log("📲 Escanea este QR con tu WhatsApp:", qr)
+      console.log("📲 QR:", qr)
     }
 
     if (connection === "close") {
-      const shouldReconnect =
-        (lastDisconnect.error = new Boom(lastDisconnect?.error))?.output?.statusCode !== 401
-      if (shouldReconnect) startBot()
+      const statusCode = lastDisconnect?.error && new Boom(lastDisconnect.error).output?.statusCode
+      const shouldReconnect = statusCode !== 401
+      console.log("⚠️ connection closed; statusCode:", statusCode, "reconnect:", shouldReconnect)
+      if (shouldReconnect) {
+        setTimeout(() => startBot().catch(e => console.error("startBot restart error:", e.message)), 1500)
+      }
     } else if (connection === "open") {
-      console.log("✅ Bot conectado a WhatsApp")
+      console.log("✅ WhatsApp connection open")
     }
   })
 
-  // Manejo de mensajes entrantes
   sock.ev.on("messages.upsert", async (m) => {
-    const msg = m.messages[0]
-    if (!msg.message) return
+    try {
+      if (!m || !Array.isArray(m.messages) || m.messages.length === 0) return
 
-    const from = msg.key.remoteJid
-    const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      ""
+      const incoming = m.messages[0]
+      if (!incoming || incoming.key?.fromMe) return
+      const from = incoming.key.remoteJid
+      if (!from) return
 
-    console.log("📩 Mensaje recibido:", text)
+      const text =
+        incoming.message?.conversation ||
+        incoming.message?.extendedTextMessage?.text ||
+        incoming.message?.imageMessage?.caption ||
+        ""
 
-    // 👉 Invocar tu script Python con logging adicional
-    console.log(">>> Intentando invocar Python con argumento:", text)
-    const python = spawn("python", ["main.py", text])
+      if (!text || typeof text !== "string") return
 
-    python.stdout.on("data", async (data) => {
-      const respuesta = data.toString().trim()
-      if (!respuesta) {
-        console.log("🤖 Bot apagado. No se envía respuesta.")
+      console.log("📩 received from", from, ":", text)
+
+      // Llamada mínima y segura a Python (no modifica Python)
+      console.log(">>> calling Python:", PYTHON_HANDLE)
+      const pythonResp = await callPython(text)
+
+      if (pythonResp && pythonResp.__error) {
+        console.error("🐍 python error:", pythonResp.__error)
         return
       }
 
-      console.log("🧠 Respuesta desde Python:", respuesta)
+      const reply = (typeof pythonResp === "string") ? pythonResp : (pythonResp?.reply || JSON.stringify(pythonResp))
 
-      // Enviar respuesta a WhatsApp
-      await sock.sendMessage(from, { text: respuesta })
-    })
+      if (!reply || reply === "{}") {
+        console.log("🤖 python returned empty/unexpected; skipping send")
+        return
+      }
 
-    python.stderr.on("data", (data) => {
-      console.error("🐍 Error en Python:", data.toString())
-    })
-
-    python.on("close", (code) => {
-      console.log(">>> Proceso Python terminó con código", code)
-    })
+      console.log("🧠 python reply:", reply)
+      await sock.sendMessage(from, { text: String(reply) })
+    } catch (err) {
+      console.error("messages.upsert handler failed:", err?.message || err)
+    }
   })
 }
 
-startBot()
+startBot().catch(err => console.error("startBot error:", err?.message || err))
 
-// === Servidor HTTP mínimo para Render ===
-const PORT = process.env.PORT || 10000
 http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain" })
-  res.end("Node service activo\n")
+  if (req.url === "/health" || req.url === "/") {
+    res.writeHead(200, { "Content-Type": "text/plain" })
+    res.end("Node service activo\n")
+    return
+  }
+  res.writeHead(404)
+  res.end("Not found")
 }).listen(PORT, () => {
-  console.log(">>> Node escuchando en puerto", PORT)
+  console.log(">>> Node listening on port", PORT)
+  // Ping a Python para visibilidad en logs; no modifica ni exige cambios en Python.
+  axios.get(PYTHON_PING, { timeout: 3000 })
+    .then(r => console.log(">>> Python ping OK:", typeof r.data === "object" ? "object" : String(r.data)))
+    .catch(e => console.log(">>> Python ping failed:", e.message))
 })
