@@ -11,4 +11,4 @@ COPY . .
 
 RUN if [ -f python-logic/requirements.txt ]; then pip3 install -r python-logic/requirements.txt; fi
 
-CMD ["node", "node.js-connection/index.js"]
+CMD ["node", "node.js-connection/index.cjs"]
