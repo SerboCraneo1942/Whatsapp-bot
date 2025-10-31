@@ -8,16 +8,20 @@ async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth")
 
   const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: true // Render mostrará el QR en los logs
+    auth: state
   })
 
   // Guardar credenciales cada vez que cambien
   sock.ev.on("creds.update", saveCreds)
 
-  // Manejo de conexión
+  // Manejo de conexión y QR
   sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect } = update
+    const { connection, lastDisconnect, qr } = update
+
+    if (qr) {
+      console.log("📲 Escanea este QR con tu WhatsApp:", qr)
+    }
+
     if (connection === "close") {
       const shouldReconnect =
         (lastDisconnect.error = new Boom(lastDisconnect?.error))?.output?.statusCode !== 401
@@ -40,7 +44,7 @@ async function startBot() {
 
     console.log("📩 Mensaje recibido:", text)
 
-    // 👉 Aquí puedes invocar tu script Python como antes
+    // 👉 Invocar tu script Python
     const python = spawn("python", ["main.py", text])
 
     python.stdout.on("data", async (data) => {
