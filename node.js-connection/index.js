@@ -4,6 +4,7 @@ global.crypto = crypto
 import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys"
 import { Boom } from "@hapi/boom"
 import { spawn } from "child_process"
+import http from "http"
 
 async function startBot() {
   // Guardar sesión en carpeta "auth"
@@ -74,3 +75,12 @@ async function startBot() {
 }
 
 startBot()
+
+// === Servidor HTTP mínimo para Render ===
+const PORT = process.env.PORT || 10000
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" })
+  res.end("Node service activo\n")
+}).listen(PORT, () => {
+  console.log(">>> Node escuchando en puerto", PORT)
+})
