@@ -4,11 +4,7 @@ RUN apt-get update && apt-get install -y python3 python3-pip curl
 
 WORKDIR /app
 
-# Install root Node deps (so /app/node_modules exists)
-COPY package*.json ./
-RUN npm install
-
-# Install subproject Node deps
+# Install node deps for the subproject
 COPY node.js-connection/package*.json ./node.js-connection/
 RUN cd node.js-connection && npm install
 
