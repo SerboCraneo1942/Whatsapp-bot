@@ -4,13 +4,24 @@ from bot_logic import BotLogic
 import sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
+# --- ADICION FLASK: variables globales expuestas para la API ---
+catalogo = None
+bot = None
+# --- FIN ADICION FLASK ---
+
 
 def run_bot():
     # Inicializar catálogo
-    catalogo = Catalogo()
+    # (línea original: catalogo = Catalogo())
+    catalogo_local = Catalogo()
+
+    # --- ADICION FLASK: exponer la instancia en la variable global `catalogo` ---
+    global catalogo
+    catalogo = catalogo_local
+    # --- FIN ADICION FLASK ---
 
     # ✅ Productos reales de tus capturas
-    catalogo.set_productos([
+    catalogo_local.set_productos([
         {"nombre": "Baby pins x30", "precio": 3000, "descripcion": " ", "url": "https://pieddyloperapeinados.com.co/product/bobby-pins-x30"},
         {"nombre": "Baby pins dorado grande x12", "precio": 4000, "descripcion": "", "url": "https://pieddyloperapeinados.com.co/product/bobby-pins-dorado-grande-x12"},
         {"nombre": "Baby pins dorado pequeño x12", "precio": 3000, "descripcion": "", "url": "https://pieddyloperapeinados.com.co/product/bobby-pins-dorado-pequeno-x12"},
@@ -47,7 +58,7 @@ def run_bot():
     ])
 
     # ✅ Bootcamp real
-    catalogo.set_bootcamp({
+    catalogo_local.set_bootcamp({
         "titulo": "BOOTCAMP HAIR STYLING EDITION",
         "descripcion": "Aprende técnicas de peinado desde cero o perfecciona tus habilidades.",
         "incluye": "Acceso a todas las clases, materiales de apoyo, certificado, asesoría personalizada",
@@ -56,15 +67,20 @@ def run_bot():
         "url": "https://pieddyloperapeinados.com.co/bootcamp"
     })
 
- 
 
     # Inicializar lógica del bot y API
-    bot = BotLogic(catalogo)
+    bot_local = BotLogic(catalogo_local)
+
+    # --- ADICION FLASK: exponer la instancia en la variable global `bot` ---
+    global bot
+    bot = bot_local
+    # --- FIN ADICION FLASK ---
+
     #api = WhatsAppAPI()
-    
+
     if len(sys.argv) > 1:
         entrada = sys.argv[1]
-        respuesta = bot.process_message(entrada)
+        respuesta = bot_local.process_message(entrada)
         print(respuesta)
         return  # salir después de responder
 
@@ -82,7 +98,7 @@ def run_bot():
             print("👋 Bot finalizado.")
             break
 
-        response = bot.process_message(user_input)
+        response = bot_local.process_message(user_input)
         print(f"[BOT] {response}")
 
         # 👉 Para enviar a WhatsApp real, descomenta y usa un número válido:
@@ -91,3 +107,60 @@ def run_bot():
 
 if __name__ == "__main__":
     run_bot()
+
+# --- INICIO ADICION FLASK (pegar al final de tu main.py) ---
+from flask import Flask, request, jsonify
+import threading
+import time
+
+_api_app = Flask(__name__)
+
+@_api_app.route("/ping", methods=["GET"])
+def _ping():
+    # Respuesta simple para health checks desde Node / Render
+    return jsonify({"status": "ok"}), 200
+
+@_api_app.route("/handle", methods=["POST"])
+def _handle():
+    # Requiere que tu run_bot exponga una instancia global `bot` (y opcionalmente `catalogo`)
+    # Si no existe, devuelve 503 para que sepas que hay que iniciar el bot primero.
+    global bot
+    if 'bot' not in globals() or bot is None:
+        return jsonify({"error": "Bot no inicializado. Ejecuta run_bot() antes de aceptar requests"}), 503
+
+    data = request.get_json(silent=True) or {}
+    text = data.get("text") or ""
+    if not text:
+        return jsonify({"error": "Falta campo 'text' en el body"}), 400
+
+    try:
+        # Llamamos al método público del bot. Ajusta el nombre si tu BotLogic usa otro.
+        if hasattr(bot, "process_message"):
+            resp = bot.process_message(text)
+        elif hasattr(bot, "procesar_mensaje"):
+            resp = bot.procesar_mensaje(text)
+        else:
+            return jsonify({"error": "El objeto bot no tiene método conocido para procesar mensajes"}), 500
+    except Exception as e:
+        return jsonify({"error": "Error interno al procesar mensaje", "exception": str(e)}), 500
+
+    # Si el bot devuelve string, devolverlo como texto; si devuelve dict/obj → JSON
+    if isinstance(resp, (str, bytes)):
+        return (resp, 200)
+    else:
+        return jsonify(resp), 200
+
+def _start_api(host="0.0.0.0", port=5000):
+    thr = threading.Thread(target=lambda: _api_app.run(host=host, port=port, use_reloader=False), daemon=True)
+    thr.start()
+    time.sleep(0.2)
+    return thr
+
+# NOTA: No arranco Flask automáticamente aquí para no interferir con tu run_bot interactivo.
+# Para arrancar Flask junto al bot, descomenta la llamada siguiente dentro de `if __name__ == "__main__":`
+# o bien ejecuta `_start_api()` manualmente antes de llamar a run_bot().
+#
+# Ejemplo seguro (añadir en tu main.py justo antes de run_bot() o dentro de __main__):
+# _start_api()
+# run_bot()
+# --- FIN ADICION FLASK ---

@@ -1,25 +1,32 @@
+# Dockerfile (usar en la raíz del repo)
 FROM node:18-bullseye
 
-RUN apt-get update && apt-get install -y python3 python3-pip curl
+# Instala Python y pip
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip && \
+    pip3 install --upgrade pip
 
+# Directorio de trabajo
 WORKDIR /app
 
-# Install node deps for the subproject
-COPY node.js-connection/package*.json ./node.js-connection/
-RUN cd node.js-connection && npm install
+# Copia las carpetas (ajusta nombres exactamente como están en repo)
+COPY node.js-connection/ ./node.js-connection/
+COPY python-logic/ ./python-logic/
 
-# Copy source
-COPY . .
+# Instala dependencias Node.js
+WORKDIR /app/node.js-connection
+RUN npm install --production
 
-# Install Python deps (Flask is in requirements.txt)
-RUN if [ -f python-logic/requirements.txt ]; then pip3 install -r python-logic/requirements.txt; fi
+# Instala dependencias Python
+WORKDIR /app/python-logic
+# Asegúrate de que requirements.txt incluya flask
+RUN pip3 install -r requirements.txt
 
-# Start Flask (background), wait until /ping responds, then start Node
-# Uses $PORT if provided by Render; default 10000
-CMD ["sh", "-c", "\
-  PORT=${PORT:-10000}; \
-  export FLASK_APP=python-logic.main; \
-  python3 -m flask run --host=0.0.0.0 --port=$PORT & \
-  until curl -sSf http://127.0.0.1:$PORT/ping >/dev/null 2>&1; do sleep 0.5; done; \
-  export PYTHON_URL=http://127.0.0.1:$PORT; \
-  node node.js-connection/index.cjs"]
+# Exponer puertos (opcional, logs y pruebas)
+EXPOSE 10000 5000
+
+# Establece PYTHON_URL a localhost para que Node apunte al Flask en el mismo contenedor
+ENV PYTHON_URL="http://localhost:5000"
+
+# CMD: arranca Node (detached) y Python en primer plano para que Docker mantenga el contenedor vivo
+CMD ["bash", "-c", "node /app/node.js-connection/index.cjs & python3 /app/python-logic/main.py"]
