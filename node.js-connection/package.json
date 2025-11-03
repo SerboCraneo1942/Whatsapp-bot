@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "WhatsApp bot con Baileys",
   "main": "node.js-connection/index.cjs",
-  "type": "module",
   "scripts": {
     "start": "node node.js-connection/index.cjs"
   },
@@ -11,7 +10,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.8",
     "@hapi/boom": "^10.0.1",
     "axios": "^1.4.0"
   }
